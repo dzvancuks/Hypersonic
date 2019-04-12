@@ -123,9 +123,11 @@ struct Field
         }
     }
 
-    Position get_closest_box_from(Position p, int range = 0)
+    vector<Position> get_closest_box_from(Position p, int range = 0)
     {
         // Breadth First Search
+        vector<Position> ret;
+        const int limit = 5;
         queue<Position> q;
         q.push(p);
         vector<vector<char>> field_copy_ = field_;
@@ -141,11 +143,24 @@ struct Field
                 //cerr << "Erroneous pos" << endl;
                 continue;
             }
+            
+            if( !has_path( p, next ) )
+            {
+                //cerr << "No path" << endl;
+                continue;
+            }
 
             if( is_field_box( field_copy_[next.row][next.col] ) )
             {
-                //cerr << "Pos found" << endl;
-                return next;
+                cerr << "Pos found" << endl;
+                ret.push_back( next );
+                
+                if( ret.size() == limit )
+                {
+                    break;
+                }
+                
+                continue;
             }
 
             if( field_copy_[next.row][next.col] == Symbol::wall )
@@ -163,7 +178,8 @@ struct Field
             if( range && ( abs( next.row - p.row ) <= range || abs( next.col - p.col) <= range ) )
             {
                 cerr << "Pos will be affected by future bomb" << endl;
-                continue;
+                field_copy_[next.row][next.col] = Symbol::box_blasted;
+                //continue;
             }
             
             if( field_copy_[next.row][next.col] == Symbol::processed )
@@ -180,7 +196,7 @@ struct Field
             q.push({next.row, next.col+1});
         }
 
-        return p; // nothing found
+        return ret;
     }
 
     Position best_place_to_bomb_around( const Position& p, const int range )
@@ -312,7 +328,7 @@ private:
     
     bool is_obstacle( char c ) const
     {
-        return is_field_box( c ) || c == Symbol::wall || c == Symbol::box_blasted;
+        return is_field_box( c ) || c == Symbol::wall || c == Symbol::box_blasted || c == Symbol::bomb;
     }
     
     bool has_path( const Position& from, const Position& to ) const
@@ -378,19 +394,23 @@ struct Character
 
     void set_next_pos( bool will_be_bombed = false )
     {
-        Position closest_box = Field::get().get_closest_box_from( my_pos, ( will_be_bombed ? bomb_range : 0 ) );
-        cerr << "Closest "<< closest_box.col << " " << closest_box.row << endl;
-
-        Position best = Field::get().best_place_to_bomb_around( closest_box, bomb_range );
-        cerr << "Best "<< best.col << " " << best.row << endl;
-        if( best == nowhere )
+        vector<Position> closest_boxes = Field::get().get_closest_box_from( my_pos, ( will_be_bombed ? bomb_range : 0 ) );
+        
+        for( const auto& closest_box: closest_boxes )
         {
-            cerr << "Going nowhere" << endl;
+            cerr << "Closest "<< closest_box.col << " " << closest_box.row << endl;
+            Position best = Field::get().best_place_to_bomb_around( closest_box, bomb_range );
+            cerr << "Best "<< best.col << " " << best.row << endl;
+            if( best == nowhere )
+            {
+                cerr << "Not optimal" << endl;
+            }
+            else
+            {
+                next_pos = best;
+            }
         }
-        else
-        {
-            next_pos = best;
-        }
+        cerr << "Going nowhere" << endl;
     }
     
 
