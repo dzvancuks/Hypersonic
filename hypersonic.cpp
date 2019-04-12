@@ -124,94 +124,66 @@ struct Field
         }
     }
 
-    vector<Position> get_closest_boxes_from(Position p, int range = 0)
+    vector<Position> get_closest_boxes_from(Position from, int range = 0)
     {
         // Breadth First Search
         vector<Position> ret;
         const int limit = 5;
-        queue<Position> q;
-        q.push(p);
-        vector<vector<char>> field_copy_ = field_;
-
-        while( !q.empty() )
-        {
-            //cerr << print( field_copy_ ) << endl;
-            
-            Position next = q.front();
-            q.pop();
-
-            //cerr << "Pos " << next.col << ":" << next.row << endl;
-            if( !is_in_field( next ) )
-            {
-                //cerr << "Erroneous pos" << endl;
-                continue;
-            }
-            
-            if( field_copy_[next.row][next.col] == Symbol::processed )
-            {
-                //cerr << "Pos is processed" << endl;
-                continue;
-            }
-            
-            if( !has_path( p, next ) )
+        
+        BFSqueue( from, [&](const Position& p, vector<vector<char>>& field_copy){
+            if( !has_path( from, p ) )
             {
                 //cerr << "No path" << endl;
-                continue;
+                return BFSresult::ignore;
             }
 
-            if( field_copy_[next.row][next.col] == Symbol::wall )
+            if( field_copy[p.row][p.col] == Symbol::wall )
             {
                 //cerr << "Pos has a wall" << endl;
-                continue;
+                return BFSresult::ignore;
             }
             
-            if( field_copy_[next.row][next.col] == Symbol::box_blasted )
+            if( field_copy[p.row][p.col] == Symbol::box_blasted )
             {
                 //cerr << "Pos has a blast zone" << endl;
-                continue;
+                return BFSresult::ignore;
             }
             
             if( range && 
-                ( ( next.col == p.col && abs( next.row - p.row ) <= range ||
-                  ( next.row == p.row && abs( next.col - p.col ) <= range ) ) ) )
+                ( ( from.col == p.col && abs( from.row - p.row ) <= range ||
+                  ( from.row == p.row && abs( from.col - p.col ) <= range ) ) ) )
             {
                 //cerr << "Pos will be affected by future bomb" << endl;
-                if( is_field_box( field_copy_[next.row][next.col] ) )
+                if( is_field_box( field_copy[p.row][p.col] ) )
                 {
-                    field_copy_[next.row][next.col] = Symbol::box_blasted;
-                    field_[next.row][next.col] = Symbol::box_blasted; // for best search
-                    continue;
+                    field_copy[p.row][p.col] = Symbol::box_blasted;
+                    field_[p.row][p.col] = Symbol::box_blasted; // for best search
+                    return BFSresult::ignore;
                 }
-                if( is_field_item( field_copy_[next.row][next.col] ) )
+                if( is_field_item( field_copy[p.row][p.col] ) )
                 {
-                    field_copy_[next.row][next.col] = Symbol::box_blasted;
-                    field_[next.row][next.col] = Symbol::blast; // for best search
+                    field_copy[p.row][p.col] = Symbol::box_blasted;
+                    field_[p.row][p.col] = Symbol::blast; // for best search
                     // process neighbours
                 }
-                field_[next.row][next.col] = Symbol::blast; // for best search
+                field_[p.row][p.col] = Symbol::blast; // for best search
             }
             
-            if( is_field_box( field_copy_[next.row][next.col] ) )
+            if( is_field_box( field_copy[p.row][p.col] ) )
             {
                 //cerr << "Pos found" << endl;
-                ret.push_back( next );
+                ret.push_back( p );
                 
                 if( ret.size() == limit )
                 {
-                    break;
+                    return BFSresult::found; // break search
                 }
                 
-                continue;
+                return BFSresult::ignore; // do not process behind blasted box
             }
             
-            field_copy_[next.row][next.col] = Symbol::processed;
-            //cerr << print() << endl;
-
-            q.push({next.row-1, next.col});
-            q.push({next.row, next.col-1});
-            q.push({next.row+1, next.col});
-            q.push({next.row, next.col+1});
-        }
+            return BFSresult::continue_search;
+        } );
 
         return ret;
     }
