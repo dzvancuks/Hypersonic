@@ -87,7 +87,7 @@ struct Field
     
     bool is_in_blast_range(const Position& p)
     {
-        return field_[p.row][p.col] == Symbol::blast;
+        return field_[p.row][p.col] == Symbol::blast || field_[p.row][p.col] == Symbol::bomb ;
     }
 
     void update_bomb_affected_boxes(const Position& p, int range )
@@ -139,7 +139,7 @@ struct Field
             Position next = q.front();
             q.pop();
 
-            cerr << "Pos " << next.col << ":" << next.row << endl;
+            //cerr << "Pos " << next.col << ":" << next.row << endl;
             if( !is_in_field( next ) )
             {
                 //cerr << "Erroneous pos" << endl;
@@ -154,19 +154,19 @@ struct Field
             
             if( !has_path( p, next ) )
             {
-                cerr << "No path" << endl;
+                //cerr << "No path" << endl;
                 continue;
             }
 
             if( field_copy_[next.row][next.col] == Symbol::wall )
             {
-                cerr << "Pos has a wall" << endl;
+                //cerr << "Pos has a wall" << endl;
                 continue;
             }
             
-            if( field_copy_[next.row][next.col] == Symbol::box_blasted || field_copy_[next.row][next.col] == Symbol::blast )
+            if( field_copy_[next.row][next.col] == Symbol::box_blasted )// || field_copy_[next.row][next.col] == Symbol::blast )
             {
-                cerr << "Pos has a blast zone" << endl;
+                //cerr << "Pos has a blast zone" << endl;
                 continue;
             }
             
@@ -174,7 +174,7 @@ struct Field
                 ( ( next.col == p.col && abs( next.row - p.row ) <= range ||
                   ( next.row == p.row && abs( next.col - p.col ) <= range ) ) ) )
             {
-                cerr << "Pos will be affected by future bomb" << endl;
+                //cerr << "Pos will be affected by future bomb" << endl;
                 if( is_field_box( field_copy_[next.row][next.col] ) )
                 {
                     field_copy_[next.row][next.col] = Symbol::box_blasted;
@@ -297,6 +297,56 @@ struct Field
 
         return best_pos;
     }
+    
+    Position get_closest_safe_spot_from( const Position& p )
+    {
+        queue<Position> q;
+        q.push(p);
+        vector<vector<char>> field_copy_ = field_;
+
+        while( !q.empty() )
+        {
+            //cerr << print( field_copy_ ) << endl;
+            
+            Position next = q.front();
+            q.pop();
+            
+            cerr << "Pos " << next.col << ":" << next.row << endl;
+            
+            if( !is_in_field( next ) )
+            {
+                cerr << "Erroneous pos" << endl;
+                continue;
+            }
+            
+            if( field_copy_[next.row][next.col] == Symbol::processed )
+            {
+                cerr << "Pos is processed" << endl;
+                continue;
+            }
+            
+            if( !has_path( p, next ) )
+            {
+                cerr << "No path" << endl;
+                continue;
+            }
+            
+            if( !is_obstacle( field_copy_[next.row][next.col] ) && field_copy_[next.row][next.col] != Symbol::blast )
+            {
+                cerr << "Safe pos found" << endl;
+                return next;
+            }
+            
+            field_copy_[next.row][next.col] = Symbol::processed;
+            
+            q.push({next.row-1, next.col});
+            q.push({next.row, next.col-1});
+            q.push({next.row+1, next.col});
+            q.push({next.row, next.col+1});
+        }
+        
+        return p; // not found
+    }
 
     string print()
     {
@@ -384,7 +434,8 @@ private:
                 continue;
             }
 
-            if( is_obstacle( field_copy_[next.row][next.col] ) )
+            if( is_obstacle( field_copy_[next.row][next.col] ) &&
+                next != char_pos ) // if standing on placed bomb path is clear
             {
                 //cerr << "no path" << endl;
                 continue;
@@ -454,18 +505,25 @@ struct Character
         {
             // update with newly placed bombs
             set_next_pos();
+            
+            if( Field::get().is_in_blast_range(next_pos) )
+            {
+                // end of the game, no boxes, move to nearest safe place
+                next_pos = Field::get().get_closest_safe_spot_from( my_pos );
+                cerr << "Going to safe spot " << next_pos.col << " " << next_pos.row << endl;
+            }
         }
         
-        cerr << "My pos "<< my_pos.col << " " << my_pos.row << endl;
-        cerr << "Next pos "<< next_pos.col << " " << next_pos.row << endl;
-        cerr << "Bombs left "<< bombs << endl;
+        cerr << "My pos " << my_pos.col << " " << my_pos.row << endl;
+        cerr << "Next pos " << next_pos.col << " " << next_pos.row << endl;
+        cerr << "Bombs left " << bombs << endl;
         if( my_pos == next_pos && bombs )
         {
             set_next_pos( true );
             bombs--;
             bomb_timers.push_back(8);
-            cerr << "New Next pos "<< next_pos.col << " " << next_pos.row << endl;
-            cout << "Bomb "<< next_pos.col << " " << next_pos.row << endl;
+            cerr << "New Next pos " << next_pos.col << " " << next_pos.row << endl;
+            cout << "Bomb " << next_pos.col << " " << next_pos.row << endl;
         }
         else
         {
