@@ -123,7 +123,7 @@ struct Field
         }
     }
 
-    vector<Position> get_closest_box_from(Position p, int range = 0)
+    vector<Position> get_closest_boxes_from(Position p, int range = 0)
     {
         // Breadth First Search
         vector<Position> ret;
@@ -134,6 +134,8 @@ struct Field
 
         while( !q.empty() )
         {
+            //cerr << print( field_copy_ ) << endl;
+            
             Position next = q.front();
             q.pop();
 
@@ -144,12 +146,50 @@ struct Field
                 continue;
             }
             
+            if( field_copy_[next.row][next.col] == Symbol::processed )
+            {
+                //cerr << "Pos is processed" << endl;
+                continue;
+            }
+            
             if( !has_path( p, next ) )
             {
-                //cerr << "No path" << endl;
+                cerr << "No path" << endl;
                 continue;
             }
 
+            if( field_copy_[next.row][next.col] == Symbol::wall )
+            {
+                cerr << "Pos has a wall" << endl;
+                continue;
+            }
+            
+            if( field_copy_[next.row][next.col] == Symbol::box_blasted || field_copy_[next.row][next.col] == Symbol::blast )
+            {
+                cerr << "Pos has a blast zone" << endl;
+                continue;
+            }
+            
+            if( range && 
+                ( ( next.col == p.col && abs( next.row - p.row ) <= range ||
+                  ( next.row == p.row && abs( next.col - p.col ) <= range ) ) ) )
+            {
+                cerr << "Pos will be affected by future bomb" << endl;
+                if( is_field_box( field_copy_[next.row][next.col] ) )
+                {
+                    field_copy_[next.row][next.col] = Symbol::box_blasted;
+                    field_[next.row][next.col] = Symbol::box_blasted; // for best search
+                    continue;
+                }
+                if( is_field_item( field_copy_[next.row][next.col] ) )
+                {
+                    field_copy_[next.row][next.col] = Symbol::box_blasted;
+                    field_[next.row][next.col] = Symbol::blast; // for best search
+                    // process neighbours
+                }
+                field_[next.row][next.col] = Symbol::blast; // for best search
+            }
+            
             if( is_field_box( field_copy_[next.row][next.col] ) )
             {
                 cerr << "Pos found" << endl;
@@ -162,32 +202,8 @@ struct Field
                 
                 continue;
             }
-
-            if( field_copy_[next.row][next.col] == Symbol::wall )
-            {
-                //cerr << "Pos has a wall" << endl;
-                continue;
-            }
             
-            if( field_copy_[next.row][next.col] == Symbol::box_blasted )
-            {
-                //cerr << "Pos has a box_blasted" << endl;
-                continue;
-            }
-            
-            if( range && ( abs( next.row - p.row ) <= range || abs( next.col - p.col) <= range ) )
-            {
-                cerr << "Pos will be affected by future bomb" << endl;
-                field_copy_[next.row][next.col] = Symbol::box_blasted;
-                //continue;
-            }
-            
-            if( field_copy_[next.row][next.col] == Symbol::processed )
-            {
-                //cerr << "Pos is processed" << endl;
-                continue;
-            }
-            field_copy_[next.row][next.col] = Symbol::processed; //processed
+            field_copy_[next.row][next.col] = Symbol::processed;
             //cerr << print() << endl;
 
             q.push({next.row-1, next.col});
@@ -284,8 +300,12 @@ struct Field
 
     string print()
     {
+        return print( field_ );
+    }
+    string print( const vector<vector<char>>& f ) const
+    {
         string res;
-        for(const auto& row: field_)
+        for(const auto& row: f)
         {
             res += string(row.begin(), row.end()) + "\n";
         }
@@ -324,6 +344,11 @@ private:
     bool is_field_box( char c ) const
     {
         return find( field_boxes.begin(), field_boxes.end(), c ) != field_boxes.end();
+    }
+    
+    bool is_field_item( char c ) const
+    {
+        return c == Symbol::range_upgrade || c == Symbol::count_upgrade;
     }
     
     bool is_obstacle( char c ) const
@@ -370,7 +395,7 @@ private:
                 //cerr << "Pos was processed before" << endl;
                 continue;
             }
-            field_copy_[next.row][next.col] = Symbol::processed; //processed
+            field_copy_[next.row][next.col] = Symbol::processed;
 
             q.push({next.row-1, next.col});
             q.push({next.row, next.col-1});
@@ -394,7 +419,7 @@ struct Character
 
     void set_next_pos( bool will_be_bombed = false )
     {
-        vector<Position> closest_boxes = Field::get().get_closest_box_from( my_pos, ( will_be_bombed ? bomb_range : 0 ) );
+        vector<Position> closest_boxes = Field::get().get_closest_boxes_from( my_pos, ( will_be_bombed ? bomb_range : 0 ) );
         
         for( const auto& closest_box: closest_boxes )
         {
@@ -408,6 +433,7 @@ struct Character
             else
             {
                 next_pos = best;
+                return;
             }
         }
         cerr << "Going nowhere" << endl;
