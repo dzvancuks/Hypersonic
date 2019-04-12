@@ -94,7 +94,7 @@ struct Field
     {
         auto found_in_range = [&]( const Position& p ) -> bool
         {
-            if( p.row < 0 || p.row >= field_.size() || p.col < 0 || p.col >= field_[0].size() ) return true;
+            if( !is_in_field( p ) ) return true;
             if( field_[p.row][p.col] == Symbol::wall || field_[p.row][p.col] == Symbol::range_upgrade || field_[p.row][p.col] == Symbol::count_upgrade ) return true; // no blast behind a wall or items
             if( is_field_box( field_[p.row][p.col] ) ) { field_[p.row][p.col] = Symbol::box_blasted; return true; } // count boxes, but no blast behind it
             
@@ -136,7 +136,7 @@ struct Field
             q.pop();
 
             cerr << "Pos " << next.col << ":" << next.row << endl;
-            if(next.row < 0 || next.row >= field_copy_.size() || next.col < 0 || next.col >= field_copy_[0].size())
+            if( !is_in_field( next ) )
             {
                 //cerr << "Erroneous pos" << endl;
                 continue;
@@ -160,15 +160,15 @@ struct Field
                 continue;
             }
             
-            if( field_copy_[next.row][next.col] == Symbol::box_blasted )
-            {
-                //cerr << "Pos has a box_blasted" << endl;
-                continue;
-            }
-            
             if( range && ( abs( next.row - p.row ) <= range || abs( next.col - p.col) <= range ) )
             {
                 cerr << "Pos will be affected by future bomb" << endl;
+                continue;
+            }
+            
+            if( field_copy_[next.row][next.col] == Symbol::processed )
+            {
+                //cerr << "Pos is processed" << endl;
                 continue;
             }
             field_copy_[next.row][next.col] = Symbol::processed; //processed
@@ -197,7 +197,7 @@ struct Field
             
             auto found_in_range = [&]( const Position& p ) -> bool
             {
-                if( p.row < 0 || p.row >= field_.size() || p.col < 0 || p.col >= field_[0].size() ) return true;
+                if( !is_in_field( p ) ) return true;
                 if( field_[p.row][p.col] == Symbol::wall || field_[p.row][p.col] == Symbol::range_upgrade || field_[p.row][p.col] == Symbol::count_upgrade ) return true; // no blast behind a wall or items
                 if( is_field_box( field_[p.row][p.col] ) ) { boxes ++; return true; } // count boxes, but no blast behind it
                 return false; // continue search
@@ -298,6 +298,11 @@ struct Field
 private:
     Field() {}
     Position char_pos = {-1, -1};
+    
+    bool is_in_field( const Position& p ) const
+    {
+        return p.row >= 0 && p.row < field_.size() && p.col >= 0 && p.col < field_[0].size();
+    }
 
     const vector<char> field_boxes = {box, box_witn_range, box_witn_bomb}; // excluding blasted boxes
     bool is_field_box( char c ) const
@@ -312,8 +317,7 @@ private:
     
     bool has_path( const Position& from, const Position& to ) const
     {
-        if( from.row < 0 || from.row >= field_.size() || from.col < 0 || from.col >= field_[0].size() ||
-            to.row < 0 || to.row >= field_.size() || to.col < 0 || to.col >= field_[0].size() )
+        if( !is_in_field( from ) || !is_in_field( to ) )
         {
             return false;
         }
@@ -333,7 +337,7 @@ private:
             }
 
             //cerr << "Pos " << next.row << ":" << next.col << endl;
-            if(next.row < 0 || next.row >= field_copy_.size() || next.col < 0 || next.col >= field_copy_[0].size())
+            if( !is_in_field( next ) )
             {
                 //cerr << "Erroneous pos" << endl;
                 continue;
