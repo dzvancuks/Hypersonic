@@ -289,6 +289,17 @@ struct Field
             return BFSresult::continue_search;
         } );
     }
+    
+    bool safe_to_bomb( const Position& p, int range )
+    {
+        auto field_backup = field_;
+        
+        set_bomb( p, range );
+        bool has_escape = get_closest_safe_spot_from( p ) != p;
+        
+        field_ = field_backup;
+        return has_escape;
+    }
 
     string print()
     {
@@ -486,7 +497,7 @@ struct Character
         cerr << "My pos " << my_pos.col << " " << my_pos.row << endl;
         cerr << "Next pos " << next_pos.col << " " << next_pos.row << endl;
         cerr << "Bombs left " << bombs << endl;
-        if( my_pos == next_pos && bombs )
+        if( my_pos == next_pos && bombs && Field::get().safe_to_bomb( my_pos, bomb_range ) )
         {
             set_next_pos( true );
             bombs--;
