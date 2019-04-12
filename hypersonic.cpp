@@ -96,7 +96,7 @@ struct Field
         auto found_in_range = [&]( const Position& p ) -> bool
         {
             if( !is_in_field( p ) ) return true;
-            if( field_[p.row][p.col] == Symbol::wall || field_[p.row][p.col] == Symbol::range_upgrade || field_[p.row][p.col] == Symbol::count_upgrade ) return true; // no blast behind a wall or items
+            if( field_[p.row][p.col] == Symbol::wall || is_field_item( field_[p.row][p.col] ) ) return true; // no blast behind a wall or items
             if( is_field_box( field_[p.row][p.col] ) ) { field_[p.row][p.col] = Symbol::box_blasted; return true; } // count boxes, but no blast behind it
             
             field_[p.row][p.col] = Symbol::blast;
