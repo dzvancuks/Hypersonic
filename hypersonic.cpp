@@ -3,6 +3,7 @@
 #include <vector>
 #include <queue>
 #include <algorithm>
+#include <functional>
 
 using namespace std;
 
@@ -164,7 +165,7 @@ struct Field
                 continue;
             }
             
-            if( field_copy_[next.row][next.col] == Symbol::box_blasted )// || field_copy_[next.row][next.col] == Symbol::blast )
+            if( field_copy_[next.row][next.col] == Symbol::box_blasted )
             {
                 //cerr << "Pos has a blast zone" << endl;
                 continue;
@@ -192,7 +193,7 @@ struct Field
             
             if( is_field_box( field_copy_[next.row][next.col] ) )
             {
-                cerr << "Pos found" << endl;
+                //cerr << "Pos found" << endl;
                 ret.push_back( next );
                 
                 if( ret.size() == limit )
@@ -298,54 +299,23 @@ struct Field
         return best_pos;
     }
     
-    Position get_closest_safe_spot_from( const Position& p )
+    Position get_closest_safe_spot_from( const Position& from )
     {
-        queue<Position> q;
-        q.push(p);
-        vector<vector<char>> field_copy_ = field_;
-
-        while( !q.empty() )
-        {
-            //cerr << print( field_copy_ ) << endl;
-            
-            Position next = q.front();
-            q.pop();
-            
-            cerr << "Pos " << next.col << ":" << next.row << endl;
-            
-            if( !is_in_field( next ) )
+        return BFSqueue( from, [&](const Position& p, vector<vector<char>>& field_copy){
+            if( !has_path( from, p ) )
             {
-                cerr << "Erroneous pos" << endl;
-                continue;
+                //cerr << "No path" << endl;
+                return BFSresult::ignore;
             }
             
-            if( field_copy_[next.row][next.col] == Symbol::processed )
+            if( !is_obstacle( field_copy[p.row][p.col] ) && field_copy[p.row][p.col] != Symbol::blast )
             {
-                cerr << "Pos is processed" << endl;
-                continue;
+                //cerr << "Safe pos found" << endl;
+                return BFSresult::found;
             }
             
-            if( !has_path( p, next ) )
-            {
-                cerr << "No path" << endl;
-                continue;
-            }
-            
-            if( !is_obstacle( field_copy_[next.row][next.col] ) && field_copy_[next.row][next.col] != Symbol::blast )
-            {
-                cerr << "Safe pos found" << endl;
-                return next;
-            }
-            
-            field_copy_[next.row][next.col] = Symbol::processed;
-            
-            q.push({next.row-1, next.col});
-            q.push({next.row, next.col-1});
-            q.push({next.row+1, next.col});
-            q.push({next.row, next.col+1});
-        }
-        
-        return p; // not found
+            return BFSresult::continue_search;
+        } );
     }
 
     string print()
@@ -406,15 +376,16 @@ private:
         return is_field_box( c ) || c == Symbol::wall || c == Symbol::box_blasted || c == Symbol::bomb;
     }
     
-    bool has_path( const Position& from, const Position& to ) const
+    enum BFSresult
     {
-        if( !is_in_field( from ) || !is_in_field( to ) )
-        {
-            return false;
-        }
-        
+        ignore = -1,
+        found = 0,
+        continue_search = 1
+    };
+    Position BFSqueue( const Position& initial, function<BFSresult(const Position&, vector<vector<char>>&)> f ) const
+    {
         queue<Position> q;
-        q.push( from );
+        q.push( initial );
         vector<vector<char>> field_copy_ = field_;
 
         while( !q.empty() )
@@ -422,22 +393,10 @@ private:
             Position next = q.front();
             q.pop();
             
-            if( next == to )
-            {
-                return true;
-            }
-
             //cerr << "Pos " << next.row << ":" << next.col << endl;
             if( !is_in_field( next ) )
             {
                 //cerr << "Erroneous pos" << endl;
-                continue;
-            }
-
-            if( is_obstacle( field_copy_[next.row][next.col] ) &&
-                next != char_pos ) // if standing on placed bomb path is clear
-            {
-                //cerr << "no path" << endl;
                 continue;
             }
 
@@ -446,6 +405,19 @@ private:
                 //cerr << "Pos was processed before" << endl;
                 continue;
             }
+            
+            BFSresult f_res = f( next, field_copy_ );
+            //cerr << "BFS callback result: " << f_res << endl;
+            if( f_res == BFSresult::ignore )
+            {
+                continue;
+            }
+            else if( f_res == BFSresult::found )
+            {
+                return next;
+            }
+            // else BFSresult::continue_search
+            
             field_copy_[next.row][next.col] = Symbol::processed;
 
             q.push({next.row-1, next.col});
@@ -454,7 +426,32 @@ private:
             q.push({next.row, next.col+1});
         }
         
-        return false;
+        //cerr << "Not found" << endl;
+        return initial;
+    }
+    
+    bool has_path( const Position& from, const Position& to ) const
+    {
+        if( !is_in_field( from ) || !is_in_field( to ) )
+        {
+            return false;
+        }
+        
+        //cerr << "Path from " << from.row << ":" << from.col << " to  " << to.row << ":" << to.col << endl;
+        return BFSqueue( from, [&](const Position& p, vector<vector<char>>& field_copy){
+            if( p == to )
+            {
+                return BFSresult::found;
+            }
+            
+            if( is_obstacle( field_copy[p.row][p.col] ) &&
+                p != char_pos ) // if standing on placed bomb path is clear
+            {
+                return BFSresult::ignore;
+            }
+            
+            return BFSresult::continue_search;
+        } ) == to;
     }
 };
 
