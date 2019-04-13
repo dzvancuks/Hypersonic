@@ -77,12 +77,12 @@ struct Field
         }
     }
 
-    void set_bomb(const Position& p, int range)
+    void set_bomb(const Position& p, int range, int timeout)
     {
         if( field_[p.row][p.col] != Symbol::bomb ) // register only new
         {
             field_[p.row][p.col] = Symbol::bomb;
-            update_bomb_affected_boxes( p, range );
+            update_bomb_affected_boxes( p, range, timeout );
         }
     }
     
@@ -91,15 +91,23 @@ struct Field
         return field_[p.row][p.col] == Symbol::blast || field_[p.row][p.col] == Symbol::bomb ;
     }
 
-    void update_bomb_affected_boxes(const Position& p, int range )
+    void update_bomb_affected_boxes(const Position& p, int range, int timeout )
     {
         auto found_in_range = [&]( const Position& p ) -> bool
         {
             if( !is_in_field( p ) ) return true;
+            if( field_[p.row][p.col] == Symbol::about_to_blast || field_[p.row][p.col] == Symbol::blast ) return true; // blast zone already registered
             if( field_[p.row][p.col] == Symbol::wall || is_field_item( field_[p.row][p.col] ) ) return true; // no blast behind a wall or items
             if( is_field_box( field_[p.row][p.col] ) ) { field_[p.row][p.col] = Symbol::box_blasted; return true; } // count boxes, but no blast behind it
             
-            field_[p.row][p.col] = Symbol::blast;
+            if( timeout <= 3 )
+            {
+                field_[p.row][p.col] = Symbol::about_to_blast;
+            }
+            else
+            {
+                field_[p.row][p.col] = Symbol::blast;
+            }
             return false; // continue search
         };
         
@@ -126,24 +134,19 @@ struct Field
 
     vector<Position> get_closest_boxes_from(Position from, int range = 0)
     {
-        // Breadth First Search
         vector<Position> ret;
         const int limit = 5;
         
         BFSqueue( from, [&](const Position& p, vector<vector<char>>& field_copy){
-            if( !has_path( from, p ) )
-            {
-                //cerr << "No path" << endl;
-                return BFSresult::ignore;
-            }
-
             if( field_copy[p.row][p.col] == Symbol::wall )
             {
                 //cerr << "Pos has a wall" << endl;
                 return BFSresult::ignore;
             }
             
-            if( field_copy[p.row][p.col] == Symbol::box_blasted )
+            if( field_copy[p.row][p.col] == Symbol::box_blasted || 
+                field_copy[p.row][p.col] == Symbol::item_blasted ||
+                field_copy[p.row][p.col] == Symbol::about_to_blast )
             {
                 //cerr << "Pos has a blast zone" << endl;
                 return BFSresult::ignore;
@@ -162,8 +165,8 @@ struct Field
                 }
                 if( is_field_item( field_copy[p.row][p.col] ) )
                 {
-                    field_copy[p.row][p.col] = Symbol::box_blasted;
-                    field_[p.row][p.col] = Symbol::blast; // for best search
+                    field_copy[p.row][p.col] = Symbol::item_blasted;
+                    field_[p.row][p.col] = Symbol::item_blasted; // for best search
                     // process neighbours
                 }
                 field_[p.row][p.col] = Symbol::blast; // for best search
@@ -203,7 +206,8 @@ struct Field
             auto found_in_range = [&]( const Position& p ) -> bool
             {
                 if( !is_in_field( p ) ) return true;
-                if( field_[p.row][p.col] == Symbol::wall || field_[p.row][p.col] == Symbol::range_upgrade || field_[p.row][p.col] == Symbol::count_upgrade ) return true; // no blast behind a wall or items
+                if( field_[p.row][p.col] == Symbol::wall || is_field_item( field_[p.row][p.col] ) ) return true; // no blast behind a wall or items
+                if( field_[p.row][p.col] == Symbol::item_blasted || field_[p.row][p.col] == Symbol::box_blasted ) return true; // no blast behind affected by other blast
                 if( is_field_box( field_[p.row][p.col] ) ) { boxes ++; return true; } // count boxes, but no blast behind it
                 return false; // continue search
             };
@@ -233,7 +237,6 @@ struct Field
         
         auto applicable = [&]( const Position& p ) -> bool
         {
-            //  and not crate/wall and has path to my char
             return field_[p.row][p.col] != Symbol::character && // not Cracracter's current pos, as currently bomb is being placed here
                    !is_obstacle( field_[p.row][p.col] ) && // not a box/wall so that bomb can be places
                    field_[p.row][p.col] != Symbol::blast && // do not stand on other bomb's blast range
@@ -280,7 +283,7 @@ struct Field
                 return BFSresult::ignore;
             }
             
-            if( !is_obstacle( field_copy[p.row][p.col] ) && field_copy[p.row][p.col] != Symbol::blast )
+            if( !is_obstacle( field_copy[p.row][p.col] ) && field_copy[p.row][p.col] != Symbol::blast && field_copy[p.row][p.col] != Symbol::about_to_blast )
             {
                 //cerr << "Safe pos found" << endl;
                 return BFSresult::found;
@@ -294,11 +297,16 @@ struct Field
     {
         auto field_backup = field_;
         
-        set_bomb( p, range );
+        set_bomb( p, range, 8 );
         bool has_escape = get_closest_safe_spot_from( p ) != p;
         
         field_ = field_backup;
         return has_escape;
+    }
+    
+    bool blast_danger( const Position& p ) const
+    {
+        return field_[p.row][p.col] == Symbol::about_to_blast;
     }
 
     string print()
@@ -327,8 +335,10 @@ struct Field
         box_witn_range = '1',
         box_witn_bomb = '2',
         box_blasted = 'a',
+        item_blasted = 'b',
         bomb = '@',
         blast = '#',
+        about_to_blast = '$',
         range_upgrade = 'R',
         count_upgrade = 'C',
         wall = 'X'
@@ -489,15 +499,31 @@ struct Character
             if( Field::get().is_in_blast_range(next_pos) )
             {
                 // end of the game, no boxes, move to nearest safe place
-                next_pos = Field::get().get_closest_safe_spot_from( my_pos );
-                cerr << "Going to safe spot " << next_pos.col << " " << next_pos.row << endl;
+                safe_pos = Field::get().get_closest_safe_spot_from( my_pos );
+                cerr << "Going to safe spot " << safe_pos.col << " " << safe_pos.row << endl;
             }
+        }
+        
+        if( Field::get().blast_danger( my_pos ) )
+        {
+            // get out of another bomb blast
+            safe_pos = Field::get().get_closest_safe_spot_from( my_pos );
+            cerr << "Going to safe spot " << safe_pos.col << " " << safe_pos.row << endl;
         }
         
         cerr << "My pos " << my_pos.col << " " << my_pos.row << endl;
         cerr << "Next pos " << next_pos.col << " " << next_pos.row << endl;
+        cerr << "Safe pos " << safe_pos.col << " " << safe_pos.row << endl;
         cerr << "Bombs left " << bombs << endl;
-        if( my_pos == next_pos && bombs && Field::get().safe_to_bomb( my_pos, bomb_range ) )
+        if( safe_pos != nowhere )
+        {
+            cout << "Move "<< safe_pos.col << " " << safe_pos.row << endl;
+            if( my_pos == safe_pos )
+            {
+                safe_pos = nowhere;
+            }
+        }
+        else if( my_pos == next_pos && bombs && Field::get().safe_to_bomb( my_pos, bomb_range ) )
         {
             set_next_pos( true );
             bombs--;
@@ -542,6 +568,7 @@ private:
     Character() {}
     const Position nowhere = {-1, -1};
     Position next_pos = nowhere;
+    Position safe_pos = nowhere;
 
     int bomb_range = 2;
     int bomb_count = 1;
@@ -609,7 +636,7 @@ int main()
                 }
                 break;
             case Entities::bomb:
-                Field::get().set_bomb( {y, x}, param2 - 1 );
+                Field::get().set_bomb( {y, x}, param2 - 1, param1 );
                 break;
             case Entities::item:
                 if( param1 == 1 )
