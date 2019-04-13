@@ -306,7 +306,7 @@ struct Field
     
     bool blast_danger( const Position& p ) const
     {
-        return field_[p.row][p.col] == Symbol::about_to_blast;
+        return is_in_field( p ) && field_[p.row][p.col] == Symbol::about_to_blast;
     }
 
     string print()
@@ -480,6 +480,13 @@ struct Character
         cerr << "Going nowhere" << endl;
     }
     
+    bool close_to_blast()
+    {
+        return Field::get().blast_danger( {my_pos.row - 1, my_pos.col} ) ||
+               Field::get().blast_danger( {my_pos.row + 1, my_pos.col} ) ||
+               Field::get().blast_danger( {my_pos.row, my_pos.col - 1} ) ||
+               Field::get().blast_danger( {my_pos.row, my_pos.col + 1} );
+    }
 
     void bomb_and_move()
     {
@@ -504,7 +511,7 @@ struct Character
             }
         }
         
-        if( Field::get().blast_danger( my_pos ) )
+        if( Field::get().blast_danger( my_pos ) || close_to_blast() )
         {
             // get out of another bomb blast
             safe_pos = Field::get().get_closest_safe_spot_from( my_pos );
